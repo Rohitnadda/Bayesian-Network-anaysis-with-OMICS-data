@@ -1,0 +1,114 @@
+# Install required packages (if not already installed)
+install.packages("ggplot2")
+install.packages("readxl")
+install.packages("readr")
+install.packages("ggplot2")
+
+# Load the required libraries
+library(bnlearn)
+library(readr)
+library(ggplot2)
+library(readxl)
+# Load your datasets and metadata file 
+human <-choose.files()
+fungus <-choose.files()
+bacteria <-choose.files()
+meta <- choose.files() # Column 1 is Samples and column 2 is Label containing categorical outcome, in this case NS and S.
+human_proteins <- read_excel(human)  # Adjust the path
+fungal_proteins <- read_excel(fungus)  # Adjust the path
+bacterial_proteins <- read_excel(bacteria)  # Adjust the path
+survival_data <- read_excel(meta)  # Adjust the path
+#print clumn names
+print(colnames(human_proteins))
+print(colnames(fungal_proteins))
+print(colnames(bacterial_proteins))
+print(colnames(survival_data))
+#convert to factor 
+bacterial_proteins$Sample <- trimws(bacterial_proteins$Sample) 
+human_proteins$Sample <- as.factor(human_proteins$Sample)
+fungal_proteins$Sample <- as.factor(fungal_proteins$Sample)
+bacterial_proteins$Sample <- as.factor(bacterial_proteins$Sample)
+survival_data$Sample <- as.factor(survival_data$Sample)
+combined_data$Label<-as.factor(combined_data$Label)
+combined_data$Sample <- as.factor(combined_data$Sample)
+#Merge the datasets 
+combined_data <- merge(human_proteins, fungal_proteins, by.x = "Sample", by.y = "Sample", all = TRUE)
+combined_data <- merge(combined_data, bacterial_proteins, by.x = "Sample", by.y = "Sample", all = TRUE)
+combined_data <- merge(combined_data, survival_data, by.x = "Sample", by.y = "Sample", all = TRUE)
+
+combined_data <- Reduce(function(x, y) merge(x, y, by = "Sample", all = TRUE), 
+                        list(human_proteins, fungal_proteins, bacterial_proteins, survival_data))
+print(dim(combined_data))  # Check the number of rows and columns
+head(combined_data)    
+
+# OR you can use this code segments, whatever suits your data
+# Combine the datasets
+combined_data <- merge(human_proteins, fungal_proteins, by = "Sample", all = TRUE) # Replace "Sample" with your actual ID column
+combined_data <- merge(combined_data, bacterial_proteins, by = "Sample", all = TRUE)
+combined_data <- merge(combined_data, survival_data, by = "Sample", all = TRUE)  # Assuming survival_data has a Sample column
+
+# Convert Survival Status to a factor
+combined_data$Label <- as.factor(combined_data$Label)  # Adjust the column name as needed
+
+str(combined_data)
+# Learn the structure of the Bayesian Network from the data
+bn_structure <- hc(combined_data)  # Hill-Climbing algorithm to learn the structure
+
+# Fit the Bayesian Network
+fitted_bn <- bn.fit(bn_structure, combined_data)
+
+# Visualize the learned Bayesian Network
+plot(bn_structure, main = "Learned Bayesian Network Structure")
+
+# Check the structure of the fitted Bayesian Network
+print(fitted_bn)
+
+# Example: Query the probability of survival given some conditions
+# Replace "Human_Protein1" and "Fungal_Protein1" with actual protein names
+query_result <- cpquery(fitted_bn, event = (Label == "NS"), 
+                        evidence = (Human_Protein1 > 0 & Fungal_Protein1 > 0))
+
+print(paste("Probability of survival given conditions:", query_result))
+
+# Additional Queries: You can perform more queries based on your analysis needs
+# Example: Probability of survival given a specific bacterial protein level
+query_result_bacterial <- cpquery(fitted_bn, event = (Label == "NS"), 
+                                  evidence = (BActerial_Protein1> 0))
+
+print(paste("Probability of survival given bacterial protein condition:", query_result_bacterial))
+
+# Model Validation: Cross-validation to assess the model
+# Split the data into training and testing sets
+set.seed(123)  # For reproducibility
+train_indices <- sample(1:nrow(combined_data), size = 0.7 * nrow(combined_data))
+train_data <- combined_data[train_indices, ]
+test_data <- combined_data[-train_indices, ]
+
+# Learn the structure on the training data
+bn_structure_train <- hc(train_data)
+fitted_bn_train <- bn.fit(bn_structure_train, train_data)
+
+# Validate the model on the test data
+# Calculate the accuracy of predictions
+predictions <- predict(fitted_bn_train, node = "Label", data = test_data)
+accuracy <- mean(predictions == test_data$Label)
+print(paste("Model Accuracy:", accuracy))
+
+# Visualize the CPDs for a specific node (e.g., Survival_Status)
+# You can visualize the CPD for any node
+install.packages("BiocManager")
+install.packages("gRain")
+install.packages("grid")
+BiocManager::install("Rgraphviz")
+
+library(Rgraphviz)
+
+# Visualize the Bayesian Network with marginal distributions
+graphviz.plot(fitted_bn_train, main = "Bayesian Network Structure")
+graphviz.chart(fitted_bn_train, type = "barprob", grid = TRUE, 
+               main = "Bayesian Network with Conditional Probability Distributions")
+
+plot(fitted_bn_train, node = "Label", main = "Conditional Probability Distribution for Survival Status")
+bn.fit.barchart(fitted_bn_train, xlab = "Probabilities", ylab = "Levels", main = "Conditional Probability Distribution for Survival Status")
+# Save the fitted Bayesian Network for future use
+saveRDS(fitted_bn, "fitted_bayesian_network.rds")
